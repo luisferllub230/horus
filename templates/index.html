@@ -109,6 +109,7 @@
             display: grid;
             grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
             gap: 20px;
+            transition: height 0.5s ease-out; 
         }
 
         .container-card {
@@ -116,7 +117,18 @@
             border-radius: 8px;
             padding: 20px;
             box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-            transition: transform 0.2s, box-shadow 0.2s;
+            transition: transform 0.2s, box-shadow 0.2s, border 0.3s; 
+            border-left: 5px solid transparent; 
+            position: relative;
+        }
+        
+        .container-card[data-running="true"] {
+            border-left-color: #27ae60;
+        }
+
+        .container-card[data-running="false"] {
+            border-left-color: #bdc3c7; 
+            opacity: 0.8; 
         }
 
         .container-card:hover {
@@ -178,10 +190,15 @@
             color: #95a5a6;
         }
 
-        .open-btn {
-            width: 100%;
+        .action-buttons {
+            display: flex;
+            gap: 10px;
+            margin-top: 10px;
+            align-items: center;
+        }
+
+        .open-btn, .start-btn, .stop-btn {
             padding: 12px;
-            background: #27ae60;
             color: white;
             border: none;
             border-radius: 6px;
@@ -189,14 +206,37 @@
             font-weight: 600;
             cursor: pointer;
             transition: background 0.3s;
-            margin-top: 10px;
         }
 
+        .open-btn {
+            background: #27ae60; 
+            flex-grow: 1;
+        }
         .open-btn:hover {
             background: #229954;
         }
 
-        .open-btn:disabled {
+        .start-btn {
+            background: #2ecc71; 
+            flex-grow: 1;
+        }
+        .start-btn:hover {
+            background: #27ae60;
+        }
+
+        .stop-btn {
+            background: #e74c3c; 
+            flex-grow: 0; 
+            width: 40px; 
+            padding: 12px 0; 
+            text-align: center;
+            line-height: 1;
+        }
+        .stop-btn:hover {
+            background: #c0392b;
+        }
+
+        .open-btn:disabled, .start-btn:disabled, .stop-btn:disabled {
             background: #95a5a6;
             cursor: not-allowed;
         }
@@ -233,6 +273,23 @@
         .eye-icon {
             font-size: 28px;
             margin-right: 10px;
+        }
+        
+        .port-unmapped {
+            font-weight: bold;
+            color: #e67e22; 
+        }
+
+        .container-card.fade-out {
+            opacity: 0;
+            transform: scale(0.9);
+            transition: opacity 0.5s ease-out, transform 0.5s ease-out, margin 0.5s ease-out, padding 0.5s ease-out, height 0.5s ease-out;
+            height: 0; 
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            border: none;
+            box-shadow: none;
         }
     </style>
 </head>
@@ -282,48 +339,143 @@
 
     <script>
         const containersGrid = document.getElementById('containers-grid');
-        const loadingState = document.getElementById('loading-state');
-        const errorMessage = document.getElementById('error-message');
-        const refreshBtn = document.querySelector('.refresh-btn');
+        let currentContainerIds = new Set(); 
+        let currentTotalCount = 0;
 
         function openContainer(url) {
-            if (url) {
+            if (url && url !== '#') {
                 window.open(url, '_blank');
             }
+        }
+
+        async function handleAction(containerId, action, buttonElement) {
+            const card = containersGrid.querySelector(`[data-container-id="${containerId}"]`);
+            if (!card) return;
+
+            const originalText = buttonElement.textContent;
+            const originalBackground = buttonElement.style.background;
+            
+            buttonElement.disabled = true;
+            buttonElement.textContent = action === 'start' ? '⏱️ Starting...' : '🛑 Stopping...';
+            buttonElement.style.background = '#e67e22';
+
+            try {
+                const response = await fetch(`/api/containers/${action}/${containerId}`, {
+                    method: 'POST'
+                });
+                
+                // 1. CORRECCIÓN: Manejar respuestas sin contenido (como 204 No Content)
+                let data = { success: false, error: 'Empty response.' };
+                try {
+                    data = await response.json();
+                } catch (e) {
+                    if (response.ok) {
+                        data = { success: true, message: 'Action completed successfully (no content received).' };
+                    } else {
+                        throw new Error(`Server Error (${response.status} ${response.statusText}).`);
+                    }
+                }
+
+                if (data.success) {
+                    console.log(data.message);
+                    setTimeout(() => loadContainers(true), 1500); 
+
+                } else {
+                    console.error(`Error ${action}ing container:`, data.error);
+                    alert(`Error ${action}ing container: ${data.error}`);
+                    
+                    buttonElement.textContent = action === 'start' ? '❌ Start Failed' : '❌ Stop Failed';
+                    buttonElement.style.background = '#e74c3c';
+                    setTimeout(() => {
+                        buttonElement.disabled = false;
+                        buttonElement.textContent = originalText;
+                        buttonElement.style.background = originalBackground;
+                    }, 3000);
+                }
+            } catch (error) {
+                console.error(`Network error ${action}ing container:`, error);
+                alert(`Network Error: The request failed. Check server connectivity or CORS settings.`); 
+                
+                buttonElement.disabled = false;
+                buttonElement.textContent = originalText;
+                buttonElement.style.background = originalBackground;
+            }
+        }
+
+        function startContainer(containerId, buttonElement) {
+            handleAction(containerId, 'start', buttonElement);
+        }
+
+        function stopContainer(containerId, buttonElement) {
+            handleAction(containerId, 'stop', buttonElement);
         }
 
         function renderContainerCard(container) {
             const isRunning = container.is_running;
             const statusClass = isRunning ? 'running' : 'stopped';
-            const portText = container.public_port ? container.public_port : 'Not mapped';
-            const buttonText = isRunning ? '🚀 Open Odoo' : '⏸️ Container Stopped';
-            const buttonDisabled = isRunning ? '' : 'disabled';
+            
+            let portDisplay;
+            let portClass = '';
+            
+            if (!container.public_port || container.public_port === '0000') {
+                portDisplay = '⚠️ Not Mapped';
+                portClass = 'port-unmapped';
+            } else {
+                portDisplay = container.public_port;
+            }
+            
             const url = container.url || '#';
 
+            let actionHtml;
+            
+            if (isRunning) {
+                // Contenedor corriendo: Botones Open y Stop
+                actionHtml = `
+                    <div class="action-buttons">
+                        <button class="open-btn" onclick="openContainer('${url}')">
+                            🚀 Open App
+                        </button>
+                        <button class="stop-btn" onclick="stopContainer('${container.id}', this)">
+                            🛑
+                        </button>
+                    </div>
+                `;
+            } else {
+                // Contenedor detenido: Botón Start
+                actionHtml = `
+                    <div class="action-buttons">
+                        <button class="start-btn" onclick="startContainer('${container.id}', this)">
+                            ▶️ Start Container
+                        </button>
+                    </div>
+                `;
+            }
+
             return `
-                <div class="container-card">
+                <div class="container-card" data-container-id="${container.id}" data-running="${isRunning}"> 
                     <div class="container-header">
                         <div class="container-name">${container.name}</div>
-                        <span class="status-badge ${statusClass}">
+                        <span class="status-badge ${statusClass}" data-status="${container.status}">
                             ${container.status}
                         </span>
                     </div>
                     <div class="container-info">
                         <span class="container-id">ID: ${container.id}</span>
                         <span>🖼️ Image: ${container.image}</span>
-                        <span>🔌 Host Port: ${portText}</span>
+                        <span class="port-info ${portClass}">🔌 Host Port: ${portDisplay}</span>
                     </div>
-                    <button class="open-btn" onclick="openContainer('${url}')" ${buttonDisabled}>
-                        ${buttonText}
-                    </button>
+                    ${actionHtml}
                 </div>
             `;
         }
 
         async function loadContainers(isManualRefresh = false) {
-            if (!isManualRefresh) {
+            const loadingState = document.getElementById('loading-state');
+            const errorMessage = document.getElementById('error-message');
+            const refreshBtn = document.querySelector('.refresh-btn');
+
+            if (!isManualRefresh && currentTotalCount === 0) {
                 loadingState.style.display = 'block';
-                containersGrid.innerHTML = '';
             }
             errorMessage.style.display = 'none';
             refreshBtn.disabled = true;
@@ -337,34 +489,101 @@
                     throw new Error(data.error || 'Unknown API error');
                 }
 
-                const containers = data.containers;
+                const newContainers = data.containers;
+                const newContainerIds = new Set(newContainers.map(c => c.id));
+                
+                containersGrid.querySelectorAll('.container-card').forEach(card => {
+                    const id = card.getAttribute('data-container-id');
+                    
+                    if (!newContainerIds.has(id)) {
+                        if (!card.classList.contains('fade-out')) {
+                            card.classList.add('fade-out');
+                            setTimeout(() => card.remove(), 550); 
+                        }
+                    }
+                });
+
                 let runningCount = 0;
                 let stoppedCount = 0;
-                let cardsHtml = '';
+                const fragment = document.createDocumentFragment();
 
-                containers.forEach(container => {
-                    cardsHtml += renderContainerCard(container);
+                newContainers.forEach(container => {
+                    const id = container.id;
+                    const existingCard = containersGrid.querySelector(`[data-container-id="${id}"]`);
+
                     if (container.is_running) {
                         runningCount++;
                     } else {
                         stoppedCount++;
                     }
-                });
+                    
+                    const newCardHtml = renderContainerCard(container);
 
-                containersGrid.innerHTML = cardsHtml || '<div class="empty-state">No Odoo containers found with the current filter.</div>';
+                    if (existingCard) {
+                        const tempDiv = document.createElement('div');
+                        tempDiv.innerHTML = newCardHtml;
+                        
+                        const newCard = tempDiv.children[0];
+                        const newCardContent = newCard.innerHTML; 
+
+                        if (existingCard.innerHTML !== newCardContent || existingCard.getAttribute('data-running') !== container.is_running.toString()) {
+                            existingCard.innerHTML = newCardContent;
+                            existingCard.setAttribute('data-running', container.is_running.toString()); 
+                            
+                            existingCard.style.boxShadow = '0 0 10px 2px rgba(52, 152, 219, 0.5)';
+                            setTimeout(() => {
+                                existingCard.style.boxShadow = '0 2px 4px rgba(0,0,0,0.1)';
+                            }, 500);
+                        }
+
+                    } else {
+                        const tempDiv = document.createElement('div');
+                        tempDiv.innerHTML = newCardHtml;
+                        
+                        const newCard = tempDiv.children[0];
+                        
+                        if (!newCard || newCard.nodeType !== 1) {
+                            console.error("Error: New card is not a valid DOM element.", container.name);
+                            return;
+                        }
+
+                        newCard.style.opacity = '0'; 
+                        
+                        fragment.appendChild(newCard);
+                    }
+                });
+                
+                if (fragment.children.length > 0) {
+                    containersGrid.appendChild(fragment);
+
+                    setTimeout(() => {
+                        newContainers.forEach(container => {
+                            const newCard = containersGrid.querySelector(`[data-container-id="${container.id}"]`);
+                            if (newCard && newCard.style.opacity === '0') {
+                                newCard.style.transition = 'opacity 0.5s ease-in, transform 0.5s ease-in';
+                                newCard.style.opacity = '1';
+                            }
+                        });
+                    }, 50); 
+                }
+
                 document.getElementById('total-count').textContent = data.total;
                 document.getElementById('running-count').textContent = runningCount;
                 document.getElementById('stopped-count').textContent = stoppedCount;
+                currentTotalCount = data.total;
 
                 const timestamp = data.timestamp;
                 const now = new Date(timestamp);
                 document.getElementById('last-update').textContent = 
                     `Last update: ${now.toLocaleString()}`;
 
+                if (data.total === 0 && containersGrid.children.length === 0) {
+                    containersGrid.innerHTML = '<div class="empty-state">No containers found with the current filters.</div>';
+                }
+
             } catch (error) {
                 console.error("Error fetching containers:", error);
                 errorMessage.style.display = 'block';
-                containersGrid.innerHTML = '';
             } finally {
                 loadingState.style.display = 'none';
                 refreshBtn.disabled = false;
@@ -374,7 +593,7 @@
 
         window.onload = () => {
             loadContainers();
-            setInterval(loadContainers, 10000);
+            setInterval(loadContainers, 10000); 
         };
     </script>
 </body>

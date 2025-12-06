@@ -108,6 +108,67 @@ def get_containers():
             'error': str(e)
         }), 500
 
+@app.route('/api/containers/start/<string:container_id>', methods=['POST'])
+def start_container(container_id):
+    """API para iniciar un contenedor detenido."""
+    try:
+        container = client.containers.get(container_id)
+        
+        if container.status == 'running':
+            return jsonify({'success': True, 'message': f'Container {container_id} is already running.'})
+
+        container.start()
+        container.reload()
+        
+        if container.status == 'running':
+            return jsonify({
+                'success': True, 
+                'message': f'Container {container_id} started successfully.',
+                'status': 'running'
+            })
+        else:
+            return jsonify({
+                'success': False, 
+                'error': f'Failed to start container {container_id}. Current status: {container.status}'
+            }), 500
+
+    except docker.errors.NotFound:
+        return jsonify({'success': False, 'error': f'Container with ID {container_id} not found.'}), 404
+    except Exception as e:
+        print(f"Error starting container {container_id}: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/containers/stop/<string:container_id>', methods=['POST'])
+def stop_container(container_id):
+    """API para detener un contenedor en ejecución."""
+    try:
+        container = client.containers.get(container_id)
+        
+        if container.status != 'running':
+            return jsonify({'success': True, 'message': f'Container {container_id} is already stopped.'})
+
+        container.stop(timeout=5)
+        
+        container.reload()
+        
+        if container.status != 'running':
+            return jsonify({
+                'success': True, 
+                'message': f'Container {container_id} stopped successfully.',
+                'status': container.status
+            })
+        else:
+            return jsonify({
+                'success': False, 
+                'error': f'Failed to stop container {container_id}. Current status: {container.status}'
+            }), 500
+
+    except docker.errors.NotFound:
+        return jsonify({'success': False, 'error': f'Container with ID {container_id} not found.'}), 404
+    except Exception as e:
+        print(f"Error stopping container {container_id}: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
 @app.route('/api/health')
 def health():
     """Endpoint de salud"""
@@ -116,7 +177,7 @@ def health():
         return jsonify({'status': 'healthy', 'docker': 'connected'})
     except:
         return jsonify({'status': 'unhealthy', 'docker': 'disconnected'}), 503
-
+    
 if __name__ == '__main__':
     print(f"🚀 Panel de Control Odoo iniciando...")
     print(f"📦 Filtro de contenedores: '{CONTAINER_FILTER_PATTERN}'")
