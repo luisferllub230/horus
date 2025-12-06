@@ -84,11 +84,8 @@ def get_containers():
         filtered_containers = []
         for container in all_containers:
             container_name = container.name
-            print(f"container name type: {type(container_name)}, name: {container_name}")
             if CONTAINER_FILTER_PATTERN:
-                print(f"CONTAINER_FILTER_PATTERN: {CONTAINER_FILTER_PATTERN}")
                 if CONTAINER_FILTER_PATTERN not in container_name:
-                    print(f"is container filter in container name {(CONTAINER_FILTER_PATTERN not in container_name)}")
                     continue
             
             info = get_container_info(container)
