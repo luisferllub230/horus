@@ -1,6 +1,7 @@
 from flask import Flask, render_template, jsonify
 import docker
 import os
+import re
 from datetime import datetime
 
 app = Flask(__name__)
@@ -11,7 +12,7 @@ app = Flask(__name__)
 
 # Pattern to filter containers (regex or substring)
 # Examples: "odoo", "odoo-", "^odoo.*", etc.
-CONTAINER_FILTER_PATTERN = os.getenv('CONTAINER_FILTER', 'odoo')
+CONTAINER_FILTER_PATTERN = os.getenv('CONTAINER_FILTER', False)
 
 # Port where this panel will run
 PANEL_PORT = int(os.getenv('PANEL_PORT', '5000'))
@@ -22,6 +23,8 @@ SERVER_HOST = os.getenv('SERVER_HOST', 'localhost')
 
 # Default Odoo port if no mapping is found
 DEFAULT_ODOO_PORT = 8069
+
+DEFAULT_TCP_PORT = os.getenv('DEFAULT_TCP_PORT', '')
 
 # ============================================
 
@@ -34,6 +37,9 @@ def get_container_info(container):
         public_port = None
         
         for container_port, mappings in ports.items() if ports else []:
+            if container_port != DEFAULT_TCP_PORT:
+                continue
+
             if mappings:
                 public_port = mappings[0]['HostPort']
                 break
@@ -52,7 +58,7 @@ def get_container_info(container):
             'name': container.name,
             'status': state,
             'is_running': is_running,
-            'public_port': public_port,
+            'public_port': public_port or '0000',
             'url': url,
             'image': container.image.tags[0] if container.image.tags else 'unknown',
             'started_at': started_at
@@ -68,19 +74,27 @@ def index():
                          filter_pattern=CONTAINER_FILTER_PATTERN,
                          server_host=SERVER_HOST)
 
+
 @app.route('/api/containers')
 def get_containers():
-    """API para obtener la lista de contenedores filtrados"""
+    """API para obtener la lista de contenedores filtrados por expresión regular y puerto."""
     try:
         all_containers = client.containers.list(all=True)
-        print(f"all containers --> {all_containers}")
         
         filtered_containers = []
         for container in all_containers:
-            # if CONTAINER_FILTER_PATTERN.lower() in container.name.lower():
+            container_name = container.name
+            print(f"container name type: {type(container_name)}, name: {container_name}")
+            if CONTAINER_FILTER_PATTERN:
+                print(f"CONTAINER_FILTER_PATTERN: {CONTAINER_FILTER_PATTERN}")
+                if CONTAINER_FILTER_PATTERN not in container_name:
+                    print(f"is container filter in container name {(CONTAINER_FILTER_PATTERN not in container_name)}")
+                    continue
+            
             info = get_container_info(container)
             if info:
-                filtered_containers.append(info)
+                if info['public_port'] is not None:
+                    filtered_containers.append(info)
         
         filtered_containers.sort(key=lambda x: (not x['is_running'], x['name']))
         
@@ -91,6 +105,7 @@ def get_containers():
             'timestamp': datetime.now().isoformat()
         })
     except Exception as e:
+        print(f"Error en get_containers: {e}") 
         return jsonify({
             'success': False,
             'error': str(e)
