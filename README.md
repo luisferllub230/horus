@@ -1,6 +1,6 @@
 # 👁️ Horus - Docker Container Monitor
 
-**The All-Seeing Eye** - A minimalist web panel to monitor and access Odoo instances running in Docker containers.
+**The All-Seeing Eye** - A minimalist web panel to monitor and access Odoo  instances running in Docker containers.
 
 ## 📋 Features
 

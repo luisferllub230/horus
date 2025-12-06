@@ -1,0 +1,381 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Horus - Container Monitor</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: #f5f5f5;
+            padding: 20px;
+            color: #333;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        header {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        h1 {
+            font-size: 24px;
+            color: #2c3e50;
+        }
+
+        .subtitle {
+            font-size: 14px;
+            color: #7f8c8d;
+            margin-top: 5px;
+        }
+
+        .filter-info {
+            font-size: 14px;
+            color: #7f8c8d;
+        }
+
+        .stats {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+
+        .stat-card {
+            background: white;
+            padding: 15px 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            flex: 1;
+        }
+
+        .stat-label {
+            font-size: 12px;
+            color: #7f8c8d;
+            text-transform: uppercase;
+            margin-bottom: 5px;
+        }
+
+        .stat-value {
+            font-size: 24px;
+            font-weight: bold;
+            color: #2c3e50;
+        }
+
+        .stat-value.running {
+            color: #27ae60;
+        }
+
+        .stat-value.stopped {
+            color: #e74c3c;
+        }
+
+        .refresh-btn {
+            background: #3498db;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: background 0.3s;
+        }
+
+        .refresh-btn:hover {
+            background: #2980b9;
+        }
+
+        .refresh-btn:disabled {
+            background: #95a5a6;
+            cursor: not-allowed;
+        }
+
+        .containers-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+            gap: 20px;
+        }
+
+        .container-card {
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        .container-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+        }
+
+        .container-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: start;
+            margin-bottom: 15px;
+        }
+
+        .container-name {
+            font-size: 16px;
+            font-weight: 600;
+            color: #2c3e50;
+            word-break: break-word;
+        }
+
+        .status-badge {
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+
+        .status-badge.running {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .status-badge.stopped {
+            background: #f8d7da;
+            color: #721c24;
+        }
+
+        .status-badge.other {
+            background: #fff3cd;
+            color: #856404;
+        }
+
+        .container-info {
+            margin: 10px 0;
+            font-size: 13px;
+            color: #7f8c8d;
+        }
+
+        .container-info span {
+            display: block;
+            margin: 5px 0;
+        }
+
+        .container-id {
+            font-family: monospace;
+            font-size: 11px;
+            color: #95a5a6;
+        }
+
+        .open-btn {
+            width: 100%;
+            padding: 12px;
+            background: #27ae60;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.3s;
+            margin-top: 10px;
+        }
+
+        .open-btn:hover {
+            background: #229954;
+        }
+
+        .open-btn:disabled {
+            background: #95a5a6;
+            cursor: not-allowed;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #7f8c8d;
+        }
+
+        .error {
+            background: #f8d7da;
+            color: #721c24;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 20px 0;
+        }
+
+        .empty-state {
+            background: white;
+            padding: 40px;
+            text-align: center;
+            border-radius: 8px;
+            color: #7f8c8d;
+        }
+
+        .last-update {
+            text-align: center;
+            color: #95a5a6;
+            font-size: 12px;
+            margin-top: 20px;
+        }
+
+        .eye-icon {
+            font-size: 28px;
+            margin-right: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <div>
+                <h1><span class="eye-icon">👁️</span>Horus - Container Monitor</h1>
+                <div class="subtitle">The All-Seeing Eye watches over your containers</div>
+                <div class="filter-info">
+                    Filter: <strong>{{ filter_pattern }}</strong> | Server: <strong>{{ server_host }}</strong>
+                </div>
+            </div>
+            <button class="refresh-btn" onclick="loadContainers(true)">🔄 Refresh</button>
+        </header>
+
+        <div class="stats">
+            <div class="stat-card">
+                <div class="stat-label">Total</div>
+                <div class="stat-value" id="total-count">0</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Running</div>
+                <div class="stat-value running" id="running-count">0</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Stopped / Exited</div>
+                <div class="stat-value stopped" id="stopped-count">0</div>
+            </div>
+        </div>
+
+        <div id="containers-list">
+            <div class="loading" id="loading-state">
+                <p>⏳ Loading containers...</p>
+            </div>
+            <div class="containers-grid" id="containers-grid">
+                
+            </div>
+        </div>
+
+        <div class="error" id="error-message" style="display: none;">
+            <strong>Error:</strong> Failed to fetch container data. Check the server logs.
+        </div>
+        
+        <div class="last-update" id="last-update">Last update: Never</div>
+    </div>
+
+    <script>
+        const containersGrid = document.getElementById('containers-grid');
+        const loadingState = document.getElementById('loading-state');
+        const errorMessage = document.getElementById('error-message');
+        const refreshBtn = document.querySelector('.refresh-btn');
+
+        function openContainer(url) {
+            if (url) {
+                window.open(url, '_blank');
+            }
+        }
+
+        function renderContainerCard(container) {
+            const isRunning = container.is_running;
+            const statusClass = isRunning ? 'running' : 'stopped';
+            const portText = container.public_port ? container.public_port : 'Not mapped';
+            const buttonText = isRunning ? '🚀 Open Odoo' : '⏸️ Container Stopped';
+            const buttonDisabled = isRunning ? '' : 'disabled';
+            const url = container.url || '#';
+
+            return `
+                <div class="container-card">
+                    <div class="container-header">
+                        <div class="container-name">${container.name}</div>
+                        <span class="status-badge ${statusClass}">
+                            ${container.status}
+                        </span>
+                    </div>
+                    <div class="container-info">
+                        <span class="container-id">ID: ${container.id}</span>
+                        <span>🖼️ Image: ${container.image}</span>
+                        <span>🔌 Host Port: ${portText}</span>
+                    </div>
+                    <button class="open-btn" onclick="openContainer('${url}')" ${buttonDisabled}>
+                        ${buttonText}
+                    </button>
+                </div>
+            `;
+        }
+
+        async function loadContainers(isManualRefresh = false) {
+            if (!isManualRefresh) {
+                loadingState.style.display = 'block';
+                containersGrid.innerHTML = '';
+            }
+            errorMessage.style.display = 'none';
+            refreshBtn.disabled = true;
+            refreshBtn.textContent = isManualRefresh ? '⏳ Loading...' : '🔄 Refresh';
+
+            try {
+                const response = await fetch('/api/containers');
+                const data = await response.json();
+
+                if (!data.success) {
+                    throw new Error(data.error || 'Unknown API error');
+                }
+
+                const containers = data.containers;
+                let runningCount = 0;
+                let stoppedCount = 0;
+                let cardsHtml = '';
+
+                containers.forEach(container => {
+                    cardsHtml += renderContainerCard(container);
+                    if (container.is_running) {
+                        runningCount++;
+                    } else {
+                        stoppedCount++;
+                    }
+                });
+
+                containersGrid.innerHTML = cardsHtml || '<div class="empty-state">No Odoo containers found with the current filter.</div>';
+                document.getElementById('total-count').textContent = data.total;
+                document.getElementById('running-count').textContent = runningCount;
+                document.getElementById('stopped-count').textContent = stoppedCount;
+
+                const timestamp = data.timestamp;
+                const now = new Date(timestamp);
+                document.getElementById('last-update').textContent = 
+                    `Last update: ${now.toLocaleString()}`;
+
+            } catch (error) {
+                console.error("Error fetching containers:", error);
+                errorMessage.style.display = 'block';
+                containersGrid.innerHTML = '';
+            } finally {
+                loadingState.style.display = 'none';
+                refreshBtn.disabled = false;
+                refreshBtn.textContent = '🔄 Refresh';
+            }
+        }
+
+        window.onload = () => {
+            loadContainers();
+            setInterval(loadContainers, 10000);
+        };
+    </script>
+</body>
+</html>
